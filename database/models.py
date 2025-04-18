@@ -9,12 +9,15 @@ class Base(AsyncAttrs, DeclarativeBase):
 
 class User(Base):
     __tablename__ = 'users'
+
     id_message: Mapped[int] = mapped_column(Integer, primary_key=True)
     tg_id: Mapped[int] = mapped_column(Integer)
     username: Mapped[str] = mapped_column(String, default='')
     avatar: Mapped[str] = mapped_column(String, default='')
     date: Mapped[str] = mapped_column(String, default='')
     text: Mapped[str] = mapped_column(String, default='')
+    file: Mapped[str] = mapped_column(String, default='')
+    media: Mapped[str] = mapped_column(String, default='')
 
 
 async def create_database(db_name: str):
