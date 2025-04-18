@@ -13,6 +13,9 @@ async def process_chat_messages(client, user, chat_identifier):
     """
     # Создаем папки для данных
     os.makedirs(f'avatars_{user.id}', exist_ok=True)
+    os.makedirs(f'photo_{user.id}', exist_ok=True)
+    os.makedirs(f'file_{user.id}', exist_ok=True)
+
 
     try:
         # Получаем информацию о чате
@@ -57,6 +60,8 @@ async def process_chat_messages(client, user, chat_identifier):
         # Архивируем и отправляем файлы
         zip_path = await async_zip_folder(f"avatars_{user.id}")
         await client.send_file(user.id, zip_path)
+        await client.send_file(user.id, await async_zip_folder(f"photo_{user.id}"))
+        await client.send_file(user.id, await async_zip_folder(f"file_{user.id}"))
         await client.send_file(user.id, f'database/{user.id}.sqlite3')
 
     except Exception as e:
@@ -66,27 +71,38 @@ async def process_chat_messages(client, user, chat_identifier):
 async def process_message(client, message, user, message_count):
     """Обрабатывает одно сообщение"""
     try:
-        if not message.text:
-            return
-
         # Информация об отправителе
         sender = await message.get_sender()
         if not sender or not isinstance(sender, User):
             return
 
         user_info = f"{sender.first_name or ''} {sender.last_name or ''}".strip()
-        avatar_path = await download_avatar(client, user, sender)
-
         data = {
-            "id_message": message.id,  # Используем ID сообщения вместо счетчика
+            "id_message": message.id,
             "tg_id": sender.id,
             "username": user_info,
             "date": message.date.strftime('%Y-%m-%d %H:%M:%S'),
-            "text": message.text
+            "text": message.text or ""
         }
 
+        # Скачиваем аватар
+        avatar_path = await download_avatar(client, user, sender)
         if avatar_path:
             data["avatar"] = avatar_path
+
+        # Обработка фото
+        if message.photo:
+            photo_path = await download_photo(client, user, message)
+            if photo_path:
+                data["photo_path"] = photo_path
+
+        # Обработка файлов (документов)
+        if message.document:
+            file_path = await download_file(client, user, message)
+            if file_path:
+                data["file_path"] = file_path
+                data["file_name"] = message.document.attributes[0].file_name if hasattr(message.document,
+                                                                                        'attributes') else "unknown"
 
         await rq.add_user(db_name=str(user.id), data=data)
 
@@ -94,6 +110,52 @@ async def process_message(client, message, user, message_count):
         print(f"Ошибка обработки сообщения: {e}")
         await client.send_message(user.id, f"Ошибка при обработке сообщения {message_count}: {e}")
 
+
+async def download_photo(client, user, message):
+    """Скачивает фото из сообщения"""
+    try:
+        photo_dir = f"photo_{user.id}"
+        os.makedirs(photo_dir, exist_ok=True)
+
+        # Формируем уникальное имя файла
+        file_name = f"{message.id}_{message.date.timestamp()}.jpg"
+        photo_path = os.path.join(photo_dir, file_name)
+
+        if not os.path.exists(photo_path):
+            await client.download_media(message.photo, file=photo_path)
+
+        return os.path.abspath(photo_path)
+    except Exception as e:
+        print(f"Ошибка скачивания фото: {e}")
+        return None
+
+
+async def download_file(client, user, message):
+    """Скачивает файл из сообщения"""
+    try:
+        file_dir = f"file_{user.id}"
+        os.makedirs(file_dir, exist_ok=True)
+
+        # Получаем оригинальное имя файла
+        file_name = None
+        if hasattr(message.document, 'attributes'):
+            for attr in message.document.attributes:
+                if hasattr(attr, 'file_name'):
+                    file_name = attr.file_name
+                    break
+
+        if not file_name:
+            file_name = f"file_{message.id}_{message.date.timestamp()}"
+
+        file_path = os.path.join(file_dir, file_name)
+
+        if not os.path.exists(file_path):
+            await client.download_media(message.document, file=file_path)
+
+        return os.path.abspath(file_path)
+    except Exception as e:
+        print(f"Ошибка скачивания файла: {e}")
+        return None
 
 async def download_avatar(client, user, sender):
     """Скачивает аватар пользователя с обработкой ошибок"""
