@@ -7,6 +7,9 @@ import os
 class Base(AsyncAttrs, DeclarativeBase):
     pass
 
+class No_base(AsyncAttrs, DeclarativeBase):
+    pass
+
 class User(Base):
     __tablename__ = 'users'
 
@@ -20,9 +23,17 @@ class User(Base):
     media: Mapped[str] = mapped_column(String, default='')
 
 
-async def create_database(db_name: str):
+class User_chat(No_base):
+    __tablename__ = "user_chat"
+
+    tg_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(Integer)
+    topic_id: Mapped[int] = mapped_column(Integer, nullable=True)
+
+async def create_database(folder_name: str, db_name: str):
     os.makedirs("database", exist_ok=True)
-    db_path = f"sqlite+aiosqlite:///database/{db_name}.sqlite3"
+    os.makedirs(f"database/{folder_name}", exist_ok=True)
+    db_path = f"sqlite+aiosqlite:///database/{folder_name}/{db_name}.sqlite3"
     engine = create_async_engine(db_path, echo=False)
 
     # Создаем таблицы
@@ -32,3 +43,14 @@ async def create_database(db_name: str):
     # Возвращаем фабрику сессий
     return async_sessionmaker(engine, expire_on_commit=False)
 
+async def create_database_for_chats(db_name: str):
+    os.makedirs("database", exist_ok=True)
+    db_path = f"sqlite+aiosqlite:///database/{db_name}.sqlite3"
+    engine = create_async_engine(db_path, echo=False)
+
+    # Создаем таблицы
+    async with engine.begin() as conn:
+        await conn.run_sync(No_base.metadata.create_all)
+
+    # Возвращаем фабрику сессий
+    return async_sessionmaker(engine, expire_on_commit=False)
