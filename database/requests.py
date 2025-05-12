@@ -1,56 +1,62 @@
-from sqlalchemy import String, Integer
-from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
-from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
-import os
+from database.models import create_database, create_database_for_chats, User_chat
+from dataclasses import dataclass
+from database.models import User
+import logging
+from sqlalchemy import select, update
+
+@dataclass
+class FolderName:
+    history = "history"
+    wiretapping = "wiretapping"
+    users = "users"
+
+async def add_user(folder_name: str ,db_name: str, data: dict) -> None:
+    """
+    добавление людей из чата
+    """
+    logging.info(f'add_user')
+    async_session = await create_database(folder_name ,db_name)
+    async with async_session() as session:
+        session.add(User(**data))
+        await session.commit()
 
 
-class Base(AsyncAttrs, DeclarativeBase):
-    pass
+async def add_chats(data: dict, db_name: str = FolderName.users) -> None:
+    """
+    добавление пользователей с чатами и темами
+    """
+    logging.info(f'add_chats')
+    async_session = await create_database_for_chats(db_name)
+    async with async_session() as session:
+        user = await session.scalar(select(User_chat).where(User_chat.tg_id == int(data["tg_id"])))
+        if not user:
+            session.add(User_chat(**data))
+        else:
+            user.chat_id=int(data["chat_id"])
+            if not data["topic_id"] is None:
+                user.topic_id=int(data["topic_id"])
+        await session.commit()
 
-class No_base(AsyncAttrs, DeclarativeBase):
-    pass
+async def get_user_tg_id(tg_id: int):
+    """
+    получение данный о пользователе по tg_id
+    """
+    logging.info('get_user_tg_id')
+    async_session = await create_database_for_chats(db_name=FolderName.users)
+    async with async_session() as session:
+        user = await session.scalar(select(User_chat).where(User_chat.tg_id == tg_id))
+        if not user:
+            return False
+        else:
+            return user
 
-class User(Base):
-    __tablename__ = 'users'
-
-    id_message: Mapped[int] = mapped_column(Integer, primary_key=True)
-    tg_id: Mapped[int] = mapped_column(Integer)
-    username: Mapped[str] = mapped_column(String, default='')
-    avatar: Mapped[str] = mapped_column(String, default='')
-    date: Mapped[str] = mapped_column(String, default='')
-    text: Mapped[str] = mapped_column(String, default='')
-    file: Mapped[str] = mapped_column(String, default='')
-    media: Mapped[str] = mapped_column(String, default='')
-
-
-class User_chat(No_base):
-    __tablename__ = "user_chat"
-
-    tg_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    chat_id: Mapped[int] = mapped_column(Integer)
-    topic_id: Mapped[int] = mapped_column(Integer, nullable=True)
-
-async def create_database(folder_name: str, db_name: str):
-    os.makedirs("database", exist_ok=True)
-    os.makedirs(f"database/{folder_name}", exist_ok=True)
-    db_path = f"sqlite+aiosqlite:///database/{folder_name}/{db_name}.sqlite3"
-    engine = create_async_engine(db_path, echo=False)
-
-    # Создаем таблицы
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # Возвращаем фабрику сессий
-    return async_sessionmaker(engine, expire_on_commit=False)
-
-async def create_database_for_chats(db_name: str):
-    os.makedirs("database", exist_ok=True)
-    db_path = f"sqlite+aiosqlite:///database/{db_name}.sqlite3"
-    engine = create_async_engine(db_path, echo=False)
-
-    # Создаем таблицы
-    async with engine.begin() as conn:
-        await conn.run_sync(No_base.metadata.create_all)
-
-    # Возвращаем фабрику сессий
-    return async_sessionmaker(engine, expire_on_commit=False)
+async def get_user_other_data(chat_id: int, topic_id: int):
+    """
+       получение данный о пользователе по chat_id и topic_id
+       """
+    logging.info('get_user_tg_id')
+    async_session = await create_database_for_chats(db_name=FolderName.users)
+    async with async_session() as session:
+        user = await session.scalar(select(User_chat).where(User_chat.chat_id==chat_id and User_chat.topic_id==topic_id))
+        if not user: return False
+        else: return user
