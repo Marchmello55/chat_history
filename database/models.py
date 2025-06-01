@@ -54,3 +54,6 @@ async def create_database_for_chats(db_name: str):
 
     # Возвращаем фабрику сессий
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+
